@@ -2,9 +2,9 @@ pipeline {
     agent any
 
     environment {
-        IMAGE_NAME = 'daniilsd/nodmain'
+        IMAGE_NAME = 'daniilsd/noddev'
         IMAGE_TAG = 'v1.0'
-        CONTAINER_NAME = 'nodemain'
+        CONTAINER_NAME = 'nodedev'
     }
 
     stages {
