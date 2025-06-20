@@ -1,59 +1,81 @@
 pipeline {
     agent any
 
+    parameters {
+        choice(name: 'ENVIRONMENT', choices: ['dev'], description: 'Select environment to deploy')
+        string(name: 'IMAGE_TAG', defaultValue: 'v1.0', description: 'Docker image tag to deploy')
+    }
+
     environment {
-        IMAGE_TAG = "daniilsd/nodedev:v1.0"
+        DOCKERHUB_CREDENTIALS = credentials('dockerhub')
     }
 
     stages {
-        stage('Build') {
+        stage('Checkout') {
             steps {
-                echo 'Running build script...'
-                docker.image('node:18').inside {
-                    sh 'chmod +x scripts/build.sh'
-                    sh './scripts/build.sh'
+                checkout scm
+            }
+        }
+
+        stage('Install & Build') {
+            steps {
+                script {
+                    docker.image('node:7.8.0').inside {
+                        sh 'chmod +x scripts/build.sh'
+                        sh './scripts/build.sh'
+                    }
                 }
             }
         }
 
         stage('Test') {
             steps {
-                echo 'Running test script...'
-                docker.image('node:18').inside {
-                    sh 'chmod +x scripts/test.sh'
-                    sh './scripts/test.sh'
+                script {
+                    docker.image('node:7.8.0').inside {
+                        sh 'chmod +x scripts/test.sh'
+                        sh './scripts/test.sh'
+                    }
                 }
             }
         }
 
-        stage('Docker Build') {
+        stage('Build Docker Image') {
             steps {
-                echo 'Building Docker image...'
-                sh 'docker build -t $IMAGE_TAG .'
+                script {
+                    def imageName = 'nodedev'
+                    sh "docker build -t daniilsd/${imageName}:${params.IMAGE_TAG} ."
+                }
             }
         }
 
-        stage('Push Image') {
+        stage('Docker Login & Push Image') {
             steps {
-                echo 'Pushing Docker image...'
-                withDockerRegistry(credentialsId: 'dockerhub', url: '') {
-                    sh 'docker push $IMAGE_TAG'
+                script {
+                    sh """
+                    echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
+                    docker push daniilsd/nodedev:${params.IMAGE_TAG}
+                    """
                 }
             }
         }
 
         stage('Stop Existing Container') {
             steps {
-                echo 'Stopping existing container...'
-                sh 'docker ps -q --filter name=nodedev | xargs -r docker stop'
-                sh 'docker ps -a -q --filter name=nodedev | xargs -r docker rm'
+                script {
+                    def containerName = 'nodedev'
+                    sh "docker ps -q --filter name=${containerName} | xargs -r docker stop"
+                    sh "docker ps -a -q --filter name=${containerName} | xargs -r docker rm"
+                }
             }
         }
 
         stage('Deploy New Container') {
             steps {
-                echo 'Deploying new container...'
-                sh 'docker run -d --name nodedev -p 3001:3000 $IMAGE_TAG'
+                script {
+                    def containerName = 'nodedev'
+                    def port = '3001'
+                    sh "docker run -d --name ${containerName} --expose 3000 -p ${port}:3000 daniilsd/${containerName}:${params.IMAGE_TAG}"
+                }
             }
         }
     }
