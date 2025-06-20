@@ -2,7 +2,7 @@ pipeline {
     agent any
 
     parameters {
-        choice(name: 'ENVIRONMENT', choices: ['dev'], description: 'Select environment to deploy')
+        choice(name: 'ENVIRONMENT', choices: ['main', 'dev'], description: 'Select environment to deploy')
         string(name: 'IMAGE_TAG', defaultValue: 'v1.0', description: 'Docker image tag to deploy')
     }
 
@@ -17,32 +17,10 @@ pipeline {
             }
         }
 
-        stage('Install & Build') {
-            steps {
-                script {
-                    docker.image('node:7.8.0').inside {
-                        sh 'chmod +x scripts/build.sh'
-                        sh './scripts/build.sh'
-                    }
-                }
-            }
-        }
-
-        stage('Test') {
-            steps {
-                script {
-                    docker.image('node:7.8.0').inside {
-                        sh 'chmod +x scripts/test.sh'
-                        sh './scripts/test.sh'
-                    }
-                }
-            }
-        }
-
         stage('Build Docker Image') {
             steps {
                 script {
-                    def imageName = 'nodedev'
+                    def imageName = params.ENVIRONMENT == 'main' ? 'nodemain' : 'nodedev'
                     sh "docker build -t daniilsd/${imageName}:${params.IMAGE_TAG} ."
                 }
             }
@@ -53,27 +31,27 @@ pipeline {
                 script {
                     sh """
                     echo $DOCKERHUB_CREDENTIALS_PSW | docker login -u $DOCKERHUB_CREDENTIALS_USR --password-stdin
-                    docker push daniilsd/nodedev:${params.IMAGE_TAG}
+                    docker push daniilsd/${params.ENVIRONMENT == 'main' ? 'nodemain' : 'nodedev'}:${params.IMAGE_TAG}
                     """
                 }
             }
         }
 
-        stage('Stop Existing Container') {
+        stage('Stop existing container') {
             steps {
                 script {
-                    def containerName = 'nodedev'
+                    def containerName = params.ENVIRONMENT == 'main' ? 'nodemain' : 'nodedev'
                     sh "docker ps -q --filter name=${containerName} | xargs -r docker stop"
                     sh "docker ps -a -q --filter name=${containerName} | xargs -r docker rm"
                 }
             }
         }
 
-        stage('Deploy New Container') {
+        stage('Deploy') {
             steps {
                 script {
-                    def containerName = 'nodedev'
-                    def port = '3001'
+                    def containerName = params.ENVIRONMENT == 'main' ? 'nodemain' : 'nodedev'
+                    def port = params.ENVIRONMENT == 'main' ? '3000' : '3001'
                     sh "docker run -d --name ${containerName} --expose 3000 -p ${port}:3000 daniilsd/${containerName}:${params.IMAGE_TAG}"
                 }
             }
